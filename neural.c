@@ -3,11 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 
 #define INPUT_SIZE 2
 #define HIDDEN_SIZE 100
 #define OUTPUT_SIZE 1
 
+#pragma warn -rvl
+#pragma warn -par
+#pragma warn -rch
 typedef struct {
   double weights_input_hidden[INPUT_SIZE][HIDDEN_SIZE];
   double weights_hidden_output[HIDDEN_SIZE][OUTPUT_SIZE];
@@ -16,6 +20,33 @@ typedef struct {
 } NeuralNetwork;
 
 double tanh_activation(double x) { return tanh(x); }
+void feedforward(NeuralNetwork *nn, double input[INPUT_SIZE],
+                 double hidden[HIDDEN_SIZE], double output[OUTPUT_SIZE]);
+void train(NeuralNetwork *nn, double input[INPUT_SIZE],
+           double target[OUTPUT_SIZE], double learning_rate);
+
+typedef struct {
+  NeuralNetwork *nn;
+  double input[INPUT_SIZE];
+  double target[OUTPUT_SIZE];
+  double learning_rate;
+} ThreadArgs;
+#pragma omp parallel for
+void *run_training(void *arg) {
+  ThreadArgs *a = (ThreadArgs *)arg;
+  double error_threshold = 0.01;
+  double error = 1.0;
+  double hidden[HIDDEN_SIZE], output[OUTPUT_SIZE];
+  while (error > error_threshold) {
+    train(a->nn, a->input, a->target, a->learning_rate);
+    feedforward(a->nn, a->input, hidden, output);
+    error = fabs(a->target[0] - output[0]);
+    printf("Current output: %.6f, Error: %.6f\n", output[0], error);
+  }
+  printf("The training is finally complete. Here is the output: %.6f\n",
+         output[0]);
+  return NULL;
+}
 
 void initialize_network(NeuralNetwork *nn) {
   srand((unsigned int)time(NULL));
@@ -33,6 +64,7 @@ void initialize_network(NeuralNetwork *nn) {
 
 void feedforward(NeuralNetwork *nn, double input[INPUT_SIZE],
                  double hidden[HIDDEN_SIZE], double output[OUTPUT_SIZE]) {
+  #pragma omp parallel for
   for (int i = 0; i < HIDDEN_SIZE; ++i) {
     hidden[i] = nn->biases_hidden[i];
     for (int j = 0; j < INPUT_SIZE; ++j)
@@ -65,6 +97,7 @@ void train(NeuralNetwork *nn, double input[INPUT_SIZE],
         learning_rate * output_errors[i] * (1 - output[i] * output[i]);
   }
 
+  #pragma omp parallel for
   for (int i = 0; i < HIDDEN_SIZE; ++i) {
     double hidden_error = 0.0;
     for (int j = 0; j < OUTPUT_SIZE; ++j)
@@ -85,23 +118,14 @@ int main(int argc, char *argv[]) {
 	}
   NeuralNetwork nn;
   initialize_network(&nn);
-
-  double input[INPUT_SIZE] = {0.5, 0.3};
-  double target[OUTPUT_SIZE];
-  target[0] = strtod(argv[1], NULL);
-  double learning_rate = strtod(argv[2], NULL);
-  double error_threshold = 0.01;
-  double error = 1.0;
-
-  double hidden[HIDDEN_SIZE], output[OUTPUT_SIZE];
-
-  while (error > error_threshold) {
-    train(&nn, input, target, learning_rate);
-    feedforward(&nn, input, hidden, output);
-    error = fabs(target[0] - output[0]);
-    printf("Current output: %.6f, Error: %.6f\n", output[0], error);
-  }
-  printf("The training is finally complete. Here is the output: %.6f\n",
-         output[0]);
+  ThreadArgs args;
+  args.nn = &nn;
+  args.input[0] = 0.5;
+  args.input[1] = 0.3;
+  args.target[0] = strtod(argv[1], NULL);
+  args.learning_rate = strtod(argv[2], NULL);
+  pthread_t thread;
+  pthread_create(&thread, NULL, run_training, &args);
+  pthread_join(thread, NULL);
   return 0;
 }
