@@ -4,14 +4,18 @@
 #include <string.h>
 #include <time.h>
 #include <pthread.h>
+#include <unistd.h>
+#if defined(__has_include)
+#  if __has_include(<omp.h>)
+#    include <omp.h>
+#    define HAVE_OMP 1
+#  endif
+#endif
 
 #define INPUT_SIZE 2
-#define HIDDEN_SIZE 100
+#define HIDDEN_SIZE 100 // DO NOT CHANGE, please 
 #define OUTPUT_SIZE 1
 
-#pragma warn -rvl
-#pragma warn -par
-#pragma warn -rch
 typedef struct {
   double weights_input_hidden[INPUT_SIZE][HIDDEN_SIZE];
   double weights_hidden_output[HIDDEN_SIZE][OUTPUT_SIZE];
@@ -19,10 +23,10 @@ typedef struct {
   double biases_output[OUTPUT_SIZE];
 } NeuralNetwork;
 
-double tanh_activation(double x) { return tanh(x); }
-void feedforward(NeuralNetwork *nn, double input[INPUT_SIZE],
+double tanh_activation(double x) { return tanh(x); } // DONT MENTION ANYTHING OUTSIDE -1 AND 1
+void feedforward(NeuralNetwork *nn, double input[INPUT_SIZE],  // What is the purpose of ts
                  double hidden[HIDDEN_SIZE], double output[OUTPUT_SIZE]);
-void train(NeuralNetwork *nn, double input[INPUT_SIZE],
+void train(NeuralNetwork *nn, double input[INPUT_SIZE], // oh boy
            double target[OUTPUT_SIZE], double learning_rate);
 
 typedef struct {
@@ -31,7 +35,6 @@ typedef struct {
   double target[OUTPUT_SIZE];
   double learning_rate;
 } ThreadArgs;
-#pragma omp parallel for
 void *run_training(void *arg) {
   ThreadArgs *a = (ThreadArgs *)arg;
   double error_threshold = 0.01;
@@ -48,6 +51,7 @@ void *run_training(void *arg) {
   return NULL;
 }
 
+// This mess have been here for too long (2024), code LGTM for me and for gcc (2026)
 void initialize_network(NeuralNetwork *nn) {
   srand((unsigned int)time(NULL));
   for (int i = 0; i < INPUT_SIZE; ++i)
@@ -62,9 +66,9 @@ void initialize_network(NeuralNetwork *nn) {
     nn->biases_output[i] = ((double)rand() / RAND_MAX) * 2.0 - 1.0;
 }
 
-void feedforward(NeuralNetwork *nn, double input[INPUT_SIZE],
+void feedforward(NeuralNetwork *nn, double input[INPUT_SIZE], // uhhhhh, wha ?
                  double hidden[HIDDEN_SIZE], double output[OUTPUT_SIZE]) {
-  #pragma omp parallel for
+  #pragma omp parallel for //plz work
   for (int i = 0; i < HIDDEN_SIZE; ++i) {
     hidden[i] = nn->biases_hidden[i];
     for (int j = 0; j < INPUT_SIZE; ++j)
@@ -79,7 +83,7 @@ void feedforward(NeuralNetwork *nn, double input[INPUT_SIZE],
   }
 }
 
-void train(NeuralNetwork *nn, double input[INPUT_SIZE],
+void train(NeuralNetwork *nn, double input[INPUT_SIZE],// I have no idea what is going on, I am not sure about why is it updating the neurons before getting the error but it compiles so its good
            double target[OUTPUT_SIZE], double learning_rate) {
   double hidden[HIDDEN_SIZE], output[OUTPUT_SIZE];
   feedforward(nn, input, hidden, output);
@@ -97,7 +101,7 @@ void train(NeuralNetwork *nn, double input[INPUT_SIZE],
         learning_rate * output_errors[i] * (1 - output[i] * output[i]);
   }
 
-  #pragma omp parallel for
+  #pragma omp parallel for //PLZ WORK
   for (int i = 0; i < HIDDEN_SIZE; ++i) {
     double hidden_error = 0.0;
     for (int j = 0; j < OUTPUT_SIZE; ++j)
@@ -118,13 +122,16 @@ int main(int argc, char *argv[]) {
 	}
   NeuralNetwork nn;
   initialize_network(&nn);
-  ThreadArgs args;
+  ThreadArgs args; // EXPERIMENTAL: MAKE COMPUTER CRASH IS VALUE > 10^-13
   args.nn = &nn;
-  args.input[0] = 0.5;
-  args.input[1] = 0.3;
+  args.input[0] = 0.1;
+  args.input[1] = 0.29;
   args.target[0] = strtod(argv[1], NULL);
   args.learning_rate = strtod(argv[2], NULL);
   pthread_t thread;
+#ifdef HAVE_OMP
+  omp_set_num_threads((int)sysconf(_SC_NPROCESSORS_ONLN));
+#endif
   pthread_create(&thread, NULL, run_training, &args);
   pthread_join(thread, NULL);
   return 0;

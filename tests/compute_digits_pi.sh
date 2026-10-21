@@ -1,6 +1,6 @@
 #!/bin/sh
 cd ../ 
-gcc -o neural neural.c -lm 
+clang -o neural neural.c -lm -fopenmp -O2
 ./neural 0.14159265 0.000001
 # please change value depending on how beefy your computer is, multithreading and parallelism is still running like shit so your pc might crash
 #

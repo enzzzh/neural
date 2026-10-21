@@ -1,0 +1,33 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        compiler: [gcc, clang]
+        exclude:
+          - os: windows-latest
+            compiler: gcc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compiler (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang libomp-dev
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.compiler }}" = "gcc" ]; then
+            gcc -o neural neural.c -lm -fopenmp -O2
+          else
+            clang -o neural neural.c -lm -fopenmp -O2
+          fi
+      - name: Smoke test
+        shell: bash
+        run: |
+          ./neural 0.5 0.01 | head -n 5
+          test "$(./neural 0.1 0.001 | wc -l)" -gt 0
